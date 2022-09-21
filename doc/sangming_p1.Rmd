@@ -1,0 +1,293 @@
+---
+title: "Project1(ADS)"
+author: "Sangmin Lee(sl4876)"
+date: "9/17/2022"
+output: html_document
+---
+
+```{r,echo = FALSE, message=FALSE, warning= FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Introduction 
+This report aims to analyze the emotional statuses shown in different philosophers' texts contained in our Philosophy Data Project dataset. In the dataset, we have 360808 quotes, 13 different schools of philosophy (plato, aristotle, empiricism, rationalism, analytic, continental, phenomenology, german_idealism, communism, capitalism, stoicism, nietzche, feminism), and 36 philosophers (Plato, Aristotle, Locke, Hume, Berkeley, Spinoza, Leibniz, Descartes, Malesbranche, Russell, Moore, Wittgenstein, Lewis, Quine, Popper, Kripke, Foucault, Derrida, Deleuze, Merleau-Ponty, Husserl, Heidegger, Kant, Fichte, Hegel, Marx, Lenin, Smith, Ricardo, Keynes, Epictetus, Marcus Aurelius, Nietzsche, Wollstonecraft, Beauvoir, Davis ) 
+
+
+# Data Loading & Packages Download
+The quotes are subset into words as the emotional analysis is done at word level. The emotional analysis is designed to answer the scientific question "What are those philosophers' emotional status? (positive vs negative) & how are their emotional status categorized ? & in how many number of clusters can we group those different philosophers based on their emotional status?"
+```{r, echo = FALSE, message=FALSE, warning= FALSE}
+library(tidyverse)
+library(tidytext)
+library(dplyr)
+library(textdata)
+library(ggplot2)
+library(tm)
+library(wordcloud)
+library(RColorBrewer)
+library(knitr)
+library(sentimentr)
+library(syuzhet)
+library(stringr)
+library(sqldf)
+library(factoextra)
+library(cluster)
+
+df <- read.csv("/Users/sangmin/Downloads/philosophy_data.csv") 
+df <- df[c("author","school","tokenized_txt","title")]
+df_words <- unnest_tokens(df, word, tokenized_txt)
+head(df_words)
+```
+
+
+
+## Data Analysis : Positive vs Negative 
+In the binary emotional analysis (positive vs negative) below, at both philosopher level and school level, we see that except a few cases, most of the philosophers and schools exhibit evenly balanced emotional (positive vs negative ) words ratio around 0.5. 
+
+The exceptional cases include Foucault(Continental), Fichte(german_idealism), Capitalism, Plato.
+```{r, message=FALSE, warning= FALSE}
+
+bing <- get_sentiments("bing")
+nrc <- get_sentiments("nrc")
+
+tidy_bing <- df_words %>% inner_join(bing)
+
+# Philosopher Level 
+tidy_bing %>% 
+  group_by(author) %>% 
+  count(sentiment) %>%
+  ungroup() %>%
+  ggplot(aes(n,author, fill = sentiment))+
+  geom_col(position = "fill") +
+  geom_text(aes(label = n), position = position_fill(0.5),  color = "white")+
+  theme_dark()+
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, size = 20, face = "bold")
+    )+
+  scale_fill_manual(values = c("#EA181E", "#00B4E8"))+
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10))+
+  
+  labs(y = NULL,  x = "ratio", fill = NULL, title = "Negative-Positive Ratio at Philosopher Level")
+
+
+# School Level
+tidy_bing %>% 
+  group_by(school) %>% 
+  count(sentiment) %>%
+  ungroup() %>%
+  ggplot(aes(n,school, fill = sentiment))+
+  geom_col(position = "fill") +
+  geom_text(aes(label = n), position = position_fill(0.5),  color = "white")+
+  theme_dark()+
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, size = 20, face = "bold")
+    )+
+  scale_fill_manual(values = c("#EA181E", "#00B4E8"))+
+  scale_x_continuous(breaks = scales::pretty_breaks(n = 10))+
+  
+  labs(y = NULL,  x = "ratio", fill = NULL, title = "Negative-Positive Ratio at School Level")
+```
+
+
+
+## Data Analysis : Sentiment Analysis NRC 
+In the non binary ( more emotional catergories : anger, anticipation, disgust, fear, joy, negative, positive, sadness, surprise, trust ), at both philosopher level and school level, we see that 'positive' and 'trust' words account for majority of word counts for most philosophers and schools whereas 'anger', 'disgust', and 'fear' words account for the small portion. IEvery philosopher shares similarity in overall ratio of each emotion. 
+
+```{r, message=FALSE, warning= FALSE}
+# Philosopher Level 
+tidy_nrc <- df_words %>% inner_join(nrc)
+tidy_nrc %>% 
+  group_by(author) %>%
+  count(sentiment) %>%
+  ungroup() %>%
+  ggplot(aes(n, author, fill = sentiment))+ 
+  geom_col(position = "fill")
+
+
+# School Level
+tidy_nrc <- df_words %>% inner_join(nrc)
+tidy_nrc %>% 
+  group_by(school) %>%
+  count(sentiment) %>%
+  ungroup() %>%
+  ggplot(aes(n, school, fill = sentiment))+ 
+  geom_col(position = "fill")
+
+```
+
+## Emotional Words Analysis for each school 
+In the emotional word counts analysis below, the each school's 100 most frequently used emotional words are plotted in the size proportional to their frequency. As can be seen in the graphs, All of the schools used positive emotional words (e.g "true", "good", "money", "present", "mother", "feeling", "god" most frequently. The only exception is the school continental using "madness" the most frequently. 
+
+The order of schools in the wordcloud graphs below are as follows. 
+: analytic, aristotle, capitalism, communism, continental, empiricism, feminism, german_idealism, nietzsche, phenomenology, plato, rationalism, stoicism 
+```{r, message=FALSE, warning= FALSE}
+
+tidy_nrc_counts<- tidy_nrc %>% 
+                  group_by(school) %>%
+                  count(word) %>%
+                  ungroup() 
+
+
+for (school in unique(tidy_nrc_counts$school)) {
+
+ df_school_nrc <- tidy_nrc_counts[which(tidy_nrc_counts$school == school),]
+
+ wordcloud(df_school_nrc$word, df_school_nrc$n,
+          main = school,
+          scale = c(3,0.1),
+          max.words = 100,
+          min.freq = 1,
+          random.order = FALSE,
+          rot.per = 0.35,
+          random.color = FALSE,
+          colors=brewer.pal(12,"Paired"))
+}
+
+```
+
+### Clustering of emotions 
+From now on, we will see how many groups (clusters) we can group the philosophers into based on their emotional statuses using the K-means clustering algorithm. The first steps to create and train the model is to generate a training dataset : the training dataset is designed to have rows represent different authors and columns represent the number of times each emotional word was used. 
+
+
+# 1. training dataset
+```{r, echo = FALSE, message=FALSE, warning= FALSE}
+
+df_transformer <- function(df, author){
+  
+  author <- author 
+  sub_df <- df[which(df$author == author),]
+  sub_df <- sub_df[-c(1)]
+  sub_df <- t(sub_df)
+  sub_df <- data.frame(sub_df)
+  colnames(sub_df) <- sub_df[1,]
+  sub_df <- sub_df[-c(1), ]
+  rownames(sub_df) <- author
+  return(sub_df)
+}
+
+
+tidy_nrc_counts <- tidy_nrc %>% 
+                      group_by(author) %>% 
+                          count(sentiment) %>% 
+                          ungroup()
+
+authors <- unique(tidy_nrc_counts$author)
+
+
+training_df <- df_transformer(tidy_nrc_counts, authors[1])
+  
+for(author in authors[2:length(authors)] ){
+  sub_df <- df_transformer(tidy_nrc_counts, author)
+  training_df <- rbind(training_df,sub_df )
+}
+
+print(head(training_df))
+
+``` 
+
+
+The second step is to implement data pre-processing : This step invovles row-normalizing each row in the dataset such all the rows have the same range of values across different columns. 
+#2. data pre-processing
+```{r, message=FALSE, warning= FALSE}
+library(wordspace)
+rows <- rownames(training_df)
+cols <- colnames(training_df)
+training_df_nu <- apply(training_df, 2, as.numeric)
+training_df_normalized <- t(apply(training_df_nu, 1, function(x)(x - min(x)) / (max(x) - min(x))))
+
+train_df <- as.data.frame(training_df_normalized)
+rownames(train_df) <- authors
+
+head(train_df)
+
+``` 
+
+The next step is to train a kmeans with different hyper-parameters ( the number of clusters ). Then the average silhouette score is plotted in the graphs below. 
+#3. training (kmeans)
+```{r, message=FALSE, warning= FALSE}
+model <- kmeans(train_df, 3)
+
+silhouette_score <- function(k){
+  km <- kmeans(train_df, centers = k, nstart=25)
+  ss <- silhouette(km$cluster, dist(train_df))
+  mean(ss[, 3])
+}
+
+k <- 2:10
+
+avg_sil <- sapply(k, silhouette_score)
+plot(k, type='b', avg_sil, xlab='Number of clusters', ylab='Average Silhouette Scores', frame=FALSE)
+
+
+fviz_nbclust(train_df, kmeans, method='silhouette')
+
+
+``` 
+As can been checked in the graphs above, the optimal number of cluster is 2 with the average silhouette score is around 0.4. 
+In the following steps, we will see the distibution of philosophers in those two clusters.
+
+# Who's in which cluster? 
+```{r,echo = FALSE, message=FALSE, warning= FALSE}
+model_2 <- kmeans(train_df, 2)
+train_df <- train_df[, which(colnames(train_df) !="positive")]
+fviz_cluster(model_2, train_df)
+``` 
+As in the graph above, "Nietzsche (continental)", "Beauvoir (Existentialism)", "Lenin (communism)",  'Deleuze(continental)", "Foucault(continental)", "Davis(feminism)", "Epictetus(stoicism)" are grouped into the same cluster (cluster 1) and the others are grouped into the same cluster ( cluster 2 ). 
+
+In the following step, the wordcloud graphs are created again to show which emotional words are frequently used by each of the two cluster groups. 
+
+
+```{r,echo = FALSE, message=FALSE, warning= FALSE}
+
+clusters_df <- data.frame(model_2$cluster)
+clusters_df["author"] <- rownames(clusters_df)
+tidy_nrc_cluster <- tidy_nrc %>% merge(clusters_df, by = "author" , all = TRUE)
+
+
+tidy_nrc_cluster_counts <- tidy_nrc_cluster %>% 
+                              group_by(model_2.cluster) %>% 
+                              count(word) %>% 
+                              ungroup() 
+
+
+
+
+for (cluster in unique(tidy_nrc_cluster_counts$model_2.cluster)) {
+
+  df <- tidy_nrc_cluster_counts[which(tidy_nrc_cluster_counts$model_2.cluster == cluster),]
+  
+  wordcloud(df$word, df$n,
+          scale = c(3,0.1),
+          max.words = 100,
+          min.freq = 1,
+          random.order = FALSE,
+          rot.per = 0.35,
+          random.color = FALSE,
+          colors=brewer.pal(12,"Paired"))
+}
+
+``` 
+
+
+In the graphs above, the cluster 1 and the cluster 2 exhibits relatively distinct frequency in their emotional words use. The cluster 2 has the word "death" and "madness" as the most frequently used emotional words, and it also uses some other non-positive emotional words such as "bad", "evil", "struggle", etc fairly frequently. In contrast, the primarily used emotional words of cluster 1 are all positive words such as "good", "god", "true", and "kind". 
+
+In the following step, we can see the two clusters' ratio of emotional words represented by each emotional category. 
+```{r,echo = FALSE, message=FALSE, warning= FALSE}
+
+tidy_nrc_cluster$model_2.cluster<- as.character(tidy_nrc_cluster$model_2.cluster) 
+
+tidy_nrc_cluster %>% 
+  group_by(model_2.cluster) %>%
+  count(sentiment) %>%
+  ungroup() %>%
+  ggplot(aes(n, model_2.cluster, fill = sentiment))+ 
+  geom_col(position = "fill")
+
+```
+
+Above, as easily expected from the previous analysis, the cluster 1 shows higher "positive" words ratio in its emotional distribution whereas the cluster 2 shows higher ratio of "anger" and "disgust" words. 
+
+
+
+
+Thank you 
